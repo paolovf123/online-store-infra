@@ -1,0 +1,32 @@
+name: Terraform CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform-ci.yml'
+
+jobs:
+  terraform:
+    name: fmt + validate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive
+
+      - name: terraform init (sin backend)
+        run: terraform init -backend=false
+
+      - name: terraform validate
+        run: terraform validate

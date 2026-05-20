@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DevOps Flow — Online Store</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --surface2:  #21262d;
+      --border:    #30363d;
+      --text:      #e6edf3;
+      --muted:     #8b949e;
+      --aws:       #FF9900;
+      --azure:     #0078D4;
+      --angular:   #DD0031;
+      --green:     #3fb950;
+      --purple:    #a371f7;
+      --cyan:      #39d353;
+      --yellow:    #d29922;
+      --radius:    12px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: rgba(13,17,23,.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 32px; height: 56px;
+    }
+    .nav-brand { font-weight: 700; font-size: 15px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+    .nav-brand span { color: var(--aws); }
+    .nav-links { display: flex; gap: 4px; }
+    .nav-links a {
+      color: var(--muted); text-decoration: none; padding: 6px 14px; border-radius: 6px;
+      font-size: 13px; transition: all .2s;
+    }
+    .nav-links a:hover { color: var(--text); background: var(--surface2); }
+
+    /* ── HERO ── */
+    .hero {
+      margin-top: 56px; padding: 72px 32px 48px;
+      text-align: center;
+      background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(255,153,0,.12) 0%, transparent 70%);
+    }
+    .hero h1 { font-size: clamp(28px, 5vw, 48px); font-weight: 800; letter-spacing: -1px; }
+    .hero h1 em { font-style: normal; color: var(--aws); }
+    .hero p { color: var(--muted); margin-top: 12px; font-size: 16px; max-width: 560px; margin-inline: auto; }
+    .badges { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 24px; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 14px; border-radius: 999px; font-size: 12px; font-weight: 600;
+      border: 1px solid; letter-spacing: .3px;
+    }
+    .badge-aws    { color: var(--aws);     border-color: rgba(255,153,0,.4);   background: rgba(255,153,0,.08); }
+    .badge-azure  { color: var(--azure);   border-color: rgba(0,120,212,.4);   background: rgba(0,120,212,.08); }
+    .badge-ng     { color: var(--angular); border-color: rgba(221,0,49,.4);    background: rgba(221,0,49,.08); }
+    .badge-tf     { color: var(--purple);  border-color: rgba(163,113,247,.4); background: rgba(163,113,247,.08); }
+    .badge-gh     { color: var(--text);    border-color: var(--border);        background: var(--surface); }
+
+    /* ── SECTIONS ── */
+    section { max-width: 1100px; margin-inline: auto; padding: 64px 24px; }
+    .section-label {
+      font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+      color: var(--aws); margin-bottom: 8px;
+    }
+    h2 { font-size: 26px; font-weight: 700; margin-bottom: 32px; }
+    h2 small { font-size: 14px; color: var(--muted); font-weight: 400; margin-left: 8px; }
+
+    /* ── PIPELINE ── */
+    .pipeline-wrap { overflow-x: auto; padding-bottom: 8px; }
+    .pipeline {
+      display: flex; align-items: stretch; gap: 0;
+      min-width: 700px;
+    }
+    .stage-connector {
+      display: flex; align-items: center; justify-content: center;
+      width: 40px; flex-shrink: 0; position: relative;
+    }
+    .stage-connector::before {
+      content: ''; position: absolute;
+      width: 100%; height: 2px;
+      background: linear-gradient(90deg, var(--border), var(--border));
+      top: 50%; transform: translateY(-50%);
+    }
+    .stage-connector .arrow-head {
+      width: 0; height: 0;
+      border-top: 6px solid transparent; border-bottom: 6px solid transparent;
+      border-left: 8px solid var(--border);
+      position: relative; z-index: 1;
+    }
+    .stage {
+      flex: 1; min-width: 130px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 20px 16px; cursor: pointer; transition: all .25s; text-align: center;
+      position: relative;
+    }
+    .stage:hover { border-color: var(--aws); transform: translateY(-3px); box-shadow: 0 8px 24px rgba(255,153,0,.15); }
+    .stage.active { border-color: var(--aws); background: rgba(255,153,0,.08); }
+    .stage.running .stage-icon { animation: spin 1.2s linear infinite; }
+    .stage.done .stage-icon { color: var(--green); }
+    .stage-icon { font-size: 28px; display: block; margin-bottom: 8px; }
+    .stage-name { font-weight: 700; font-size: 13px; display: block; }
+    .stage-sub  { font-size: 11px; color: var(--muted); margin-top: 4px; display: block; }
+    .stage-badge {
+      position: absolute; top: -8px; left: 50%; transform: translateX(-50%);
+      font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+      background: var(--aws); color: #000; letter-spacing: .5px; white-space: nowrap;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes pulse-green { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+
+    .run-btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--aws); color: #000; border: none; border-radius: 8px;
+      padding: 10px 22px; font-size: 13px; font-weight: 700; cursor: pointer;
+      transition: all .2s; margin-top: 24px;
+    }
+    .run-btn:hover { background: #ffb733; transform: translateY(-1px); }
+    .run-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+    /* ── STAGE DETAIL ── */
+    .stage-detail {
+      margin-top: 24px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px; transition: all .3s;
+      animation: fadeIn .3s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .stage-detail h3 { font-size: 15px; font-weight: 700; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .step-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+    .step-list li {
+      display: flex; align-items: flex-start; gap: 12px;
+      background: var(--surface2); border-radius: 8px; padding: 12px 16px;
+    }
+    .step-num {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: var(--aws); color: #000; font-size: 11px; font-weight: 800;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px;
+    }
+    .step-text strong { display: block; font-size: 13px; }
+    .step-text span   { color: var(--muted); font-size: 12px; }
+    code {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 4px; padding: 1px 6px; font-size: 12px; font-family: 'SF Mono', monospace;
+      color: var(--cyan);
+    }
+
+    /* ── ARCHITECTURE ── */
+    .arch-grid { display: grid; grid-template-columns: 1fr auto 1fr; gap: 24px; align-items: center; }
+    .arch-cloud {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 24px; position: relative; overflow: hidden;
+    }
+    .arch-cloud::before {
+      content: ''; position: absolute; inset: 0;
+      background: var(--cloud-color); opacity: .04; pointer-events: none;
+    }
+    .arch-cloud.aws   { --cloud-color: var(--aws); border-color: rgba(255,153,0,.3); }
+    .arch-cloud.azure { --cloud-color: var(--azure); border-color: rgba(0,120,212,.3); }
+    .cloud-header {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+      padding-bottom: 16px; border-bottom: 1px solid var(--border);
+    }
+    .cloud-logo { font-size: 22px; }
+    .cloud-title { font-weight: 700; font-size: 15px; }
+    .cloud-sub   { font-size: 11px; color: var(--muted); }
+    .resource-list { display: flex; flex-direction: column; gap: 10px; }
+    .resource {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--surface2); border-radius: 8px; padding: 10px 14px;
+      border: 1px solid transparent; transition: border-color .2s;
+    }
+    .resource:hover { border-color: var(--border); }
+    .resource-icon { font-size: 18px; flex-shrink: 0; }
+    .resource-name { font-size: 13px; font-weight: 600; }
+    .resource-desc { font-size: 11px; color: var(--muted); }
+    .arch-center { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .arch-arrow {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      color: var(--muted); font-size: 11px; font-weight: 600;
+    }
+    .arch-arrow .line {
+      width: 2px; height: 40px;
+      background: linear-gradient(180deg, var(--border), transparent);
+    }
+    .arch-arrow .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--aws); animation: pulse-green 2s infinite;
+    }
+
+    /* ── GIT BRANCHES ── */
+    .git-graph {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 32px; overflow-x: auto;
+    }
+    .git-track { display: flex; align-items: center; gap: 0; margin-bottom: 24px; position: relative; }
+    .git-track:last-child { margin-bottom: 0; }
+    .branch-label {
+      width: 120px; flex-shrink: 0; text-align: right; padding-right: 16px;
+      font-size: 12px; font-weight: 700;
+    }
+    .commits { display: flex; align-items: center; gap: 0; flex: 1; min-width: 400px; }
+    .commit {
+      width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;
+      border: 2px solid; position: relative; cursor: pointer; z-index: 1;
+      transition: transform .2s;
+    }
+    .commit:hover { transform: scale(1.4); }
+    .commit::after {
+      content: attr(data-label);
+      position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%);
+      white-space: nowrap; font-size: 10px; color: var(--muted);
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 4px; padding: 2px 6px; pointer-events: none; opacity: 0; transition: opacity .2s;
+    }
+    .commit:hover::after { opacity: 1; }
+    .commit-line {
+      height: 2px; flex: 1;
+    }
+    .branch-main   .commit { border-color: var(--green);  background: var(--green); }
+    .branch-main   .commit-line { background: var(--green); }
+    .branch-develop .commit { border-color: var(--azure); background: var(--azure); }
+    .branch-develop .commit-line { background: var(--azure); }
+    .branch-feature .commit { border-color: var(--purple); background: var(--purple); }
+    .branch-feature .commit-line { background: var(--purple); }
+    .branch-hotfix  .commit { border-color: var(--angular); background: var(--angular); }
+    .branch-hotfix  .commit-line { background: var(--angular); }
+    .branch-tag { border-color: var(--yellow) !important; background: transparent !important; box-shadow: 0 0 0 3px rgba(210,153,34,.3); }
+
+    /* ── ENV TABLE ── */
+    .env-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .env-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px; transition: all .2s;
+    }
+    .env-card:hover { border-color: rgba(255,153,0,.4); transform: translateY(-2px); }
+    .env-name { font-size: 18px; font-weight: 800; margin-bottom: 4px; }
+    .env-name.prod { color: var(--aws); }
+    .env-name.stg  { color: var(--azure); }
+    .env-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .env-row:last-child { border-bottom: none; }
+    .env-row .label { color: var(--muted); font-size: 12px; }
+    .env-row .value { font-size: 12px; font-weight: 600; }
+
+    /* ── DIVIDER ── */
+    .divider { border: none; border-top: 1px solid var(--border); }
+
+    /* ── FOOTER ── */
+    footer {
+      text-align: center; padding: 32px; color: var(--muted); font-size: 12px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 700px) {
+      .arch-grid { grid-template-columns: 1fr; }
+      .arch-center { flex-direction: row; }
+      .env-grid { grid-template-columns: 1fr; }
+      nav { padding: 0 16px; }
+      .nav-links a { padding: 6px 8px; font-size: 12px; }
+    }
+
+    /* ── TOOLTIP ── */
+    [data-tip] { position: relative; }
+    [data-tip]:hover::before {
+      content: attr(data-tip);
+      position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+      padding: 6px 10px; font-size: 11px; color: var(--text); white-space: nowrap;
+      z-index: 99; pointer-events: none;
+    }
+
+    /* scroll indicator */
+    .scroll-indicator {
+      position: fixed; top: 56px; left: 0; height: 3px;
+      background: linear-gradient(90deg, var(--aws), var(--azure));
+      z-index: 99; transition: width .1s;
+      width: 0%;
+    }
+  </style>
+</head>
+<body>
+
+<div class="scroll-indicator" id="scrollBar"></div>
+
+<nav>
+  <div class="nav-brand">⚙️ <span>Online Store</span> — DevOps Flow</div>
+  <div class="nav-links">
+    <a href="#pipeline">Pipeline</a>
+    <a href="#arquitectura">Arquitectura</a>
+    <a href="#ramas">Ramas</a>
+    <a href="#entornos">Entornos</a>
+    <a href="#observabilidad">Observabilidad</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <h1>Flujo <em>DevOps</em><br>Online Store</h1>
+  <p>Arquitectura multi-cloud: frontend en AWS, backend en Azure.<br>CI/CD completamente automatizado vía AWS CodePipeline.</p>
+  <div class="badges">
+    <span class="badge badge-ng">🅰️ Angular 20</span>
+    <span class="badge badge-aws">☁️ AWS CodePipeline</span>
+    <span class="badge badge-aws">🪣 S3 + CloudFront</span>
+    <span class="badge badge-azure">💙 Azure App Service</span>
+    <span class="badge badge-tf">🏗️ Terraform</span>
+    <span class="badge badge-gh">🐙 GitHub</span>
+    <span class="badge badge-aws">📊 CloudWatch + SNS</span>
+  </div>
+</div>
+
+<!-- PIPELINE -->
+<section id="pipeline">
+  <div class="section-label">CI / CD</div>
+  <h2>Pipeline <small>AWS CodePipeline — click en cada etapa para ver detalles</small></h2>
+
+  <div class="pipeline-wrap">
+    <div class="pipeline" id="pipeline">
+      <div class="stage" id="s-source" onclick="showStage('source')">
+        <span class="stage-icon">🐙</span>
+        <span class="stage-name">Source</span>
+        <span class="stage-sub">GitHub Push</span>
+      </div>
+      <div class="stage-connector"><div class="arrow-head"></div></div>
+      <div class="stage" id="s-build" onclick="showStage('build')">
+        <span class="stage-icon">🔨</span>
+        <span class="stage-name">Build</span>
+        <span class="stage-sub">CodeBuild</span>
+      </div>
+      <div class="stage-connector"><div class="arrow-head"></div></div>
+      <div class="stage" id="s-approve" onclick="showStage('approve')">
+        <span class="stage-badge">Solo Producción</span>
+        <span class="stage-icon">✋</span>
+        <span class="stage-name">Approve</span>
+        <span class="stage-sub">Manual</span>
+      </div>
+      <div class="stage-connector"><div class="arrow-head"></div></div>
+      <div class="stage" id="s-deploy" onclick="showStage('deploy')">
+        <span class="stage-icon">🚀</span>
+        <span class="stage-name">Deploy</span>
+        <span class="stage-sub">S3 + CloudFront</span>
+      </div>
+    </div>
+  </div>
+
+  <button class="run-btn" id="runBtn" onclick="runPipeline()">▶ Simular ejecución</button>
+
+  <div class="stage-detail" id="stageDetail" style="display:none"></div>
+</section>
+
+<hr class="divider" />
+
+<!-- ARQUITECTURA -->
+<section id="arquitectura">
+  <div class="section-label">Infraestructura</div>
+  <h2>Arquitectura Multi-Cloud</h2>
+
+  <div class="arch-grid">
+    <!-- AWS -->
+    <div class="arch-cloud aws">
+      <div class="cloud-header">
+        <span class="cloud-logo">☁️</span>
+        <div>
+          <div class="cloud-title" style="color:var(--aws)">Amazon Web Services</div>
+          <div class="cloud-sub">Frontend + CI/CD</div>
+        </div>
+      </div>
+      <div class="resource-list">
+        <div class="resource" data-tip="Bucket privado con versioning + SSE AES256, acceso solo desde CloudFront via OAC. Lifecycle limpia versiones obsoletas tras 30d">
+          <span class="resource-icon">🪣</span>
+          <div>
+            <div class="resource-name">S3 Bucket (frontend)</div>
+            <div class="resource-desc">Estáticos Angular · versioning + SSE</div>
+          </div>
+        </div>
+        <div class="resource" data-tip="CDN con managed cache policy CachingOptimized + access logging a S3">
+          <span class="resource-icon">🌐</span>
+          <div>
+            <div class="resource-name">CloudFront</div>
+            <div class="resource-desc">CDN + HTTPS + SPA routing + access logs</div>
+          </div>
+        </div>
+        <div class="resource" data-tip="Orquesta Source → Build → Approve → Deploy">
+          <span class="resource-icon">🔄</span>
+          <div>
+            <div class="resource-name">CodePipeline</div>
+            <div class="resource-desc">Orquestador del CI/CD</div>
+          </div>
+        </div>
+        <div class="resource" data-tip="Build: npm audit + tests con cobertura + ng build (caché S3 sobre ~/.npm). Deploy: s3 sync + invalidación">
+          <span class="resource-icon">🔨</span>
+          <div>
+            <div class="resource-name">CodeBuild (×2)</div>
+            <div class="resource-desc">Build Angular · Deploy S3 · con caché S3</div>
+          </div>
+        </div>
+        <div class="resource" data-tip="Parámetro /online-store/{env}/backend-url — nunca hardcodeado">
+          <span class="resource-icon">🔑</span>
+          <div>
+            <div class="resource-name">SSM Parameter Store</div>
+            <div class="resource-desc">BACKEND_URL por entorno</div>
+          </div>
+        </div>
+        <div class="resource" data-tip="Topic SNS suscrito vía email — recibe eventos del pipeline y alarmas de CloudFront">
+          <span class="resource-icon">📨</span>
+          <div>
+            <div class="resource-name">SNS + CodeStar Notifications</div>
+            <div class="resource-desc">Alertas de pipeline y CloudFront</div>
+          </div>
+        </div>
+        <div class="resource" data-tip="Alarmas 5xx, 4xx y no-traffic (solo prod) + dashboard con Requests, Error rate, Bytes y ejecuciones de pipeline">
+          <span class="resource-icon">📊</span>
+          <div>
+            <div class="resource-name">CloudWatch</div>
+            <div class="resource-desc">Alarms · Dashboard · Access logs</div>
+          </div>
+        </div>
+        <div class="resource" data-tip="Gestión de infraestructura con Terraform (AWS ~5.0)">
+          <span class="resource-icon">🏗️</span>
+          <div>
+            <div class="resource-name">Terraform (IaC)</div>
+            <div class="resource-desc">Estado en S3 + lock DynamoDB</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CENTER -->
+    <div class="arch-center">
+      <div class="arch-arrow">
+        <div class="dot"></div>
+        <div class="line"></div>
+        <span>HTTPS /api/*</span>
+        <div class="line" style="background:linear-gradient(180deg,transparent,var(--border))"></div>
+        <div class="dot"></div>
+      </div>
+    </div>
+
+    <!-- AZURE -->
+    <div class="arch-cloud azure">
+      <div class="cloud-header">
+        <span class="cloud-logo">💙</span>
+        <div>
+          <div class="cloud-title" style="color:var(--azure)">Microsoft Azure</div>
+          <div class="cloud-sub">Backend (API REST)</div>
+        </div>
+      </div>
+      <div class="resource-list">
+        <div class="resource" data-tip="API REST del backend — URL inyectada en build time vía SSM">
+          <span class="resource-icon">⚙️</span>
+          <div>
+            <div class="resource-name">App Service</div>
+            <div class="resource-desc">Backend de la tienda</div>
+          </div>
+        </div>
+        <div class="resource" data-tip="CORS debe aceptar el dominio CloudFront de cada entorno">
+          <span class="resource-icon">🔒</span>
+          <div>
+            <div class="resource-name">CORS configurado</div>
+            <div class="resource-desc">Acepta dominio CloudFront</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:20px;padding:14px;background:rgba(0,120,212,.08);border-radius:8px;border:1px solid rgba(0,120,212,.2)">
+        <div style="font-size:11px;font-weight:700;color:var(--azure);margin-bottom:6px">¿Cómo llega la URL al frontend?</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.7">
+          SSM Parameter Store → CodeBuild env var <code>BACKEND_URL</code><br>
+          → <code>node scripts/inject-env.js</code> reemplaza <code>__BACKEND_URL__</code><br>
+          → <code>ng build</code> compila con la URL real
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider" />
+
+<!-- GIT BRANCHES -->
+<section id="ramas">
+  <div class="section-label">Control de versiones</div>
+  <h2>Estrategia de Ramas</h2>
+
+  <div class="git-graph">
+    <div class="git-track branch-main">
+      <div class="branch-label" style="color:var(--green)">main</div>
+      <div class="commits">
+        <div class="commit" data-label="init"></div>
+        <div class="commit-line" style="flex:2"></div>
+        <div class="commit" data-label="merge release/1.0"></div>
+        <div class="commit-line" style="flex:3"></div>
+        <div class="commit branch-tag" data-label="v1.0.0 🏷️"></div>
+        <div class="commit-line" style="flex:2"></div>
+        <div class="commit" data-label="hotfix merge"></div>
+        <div class="commit-line" style="flex:4"></div>
+        <div class="commit" data-label="HEAD (producción)"></div>
+      </div>
+    </div>
+
+    <div class="git-track branch-develop">
+      <div class="branch-label" style="color:var(--azure)">develop</div>
+      <div class="commits">
+        <div class="commit" data-label="branch de main"></div>
+        <div class="commit-line" style="flex:1"></div>
+        <div class="commit" data-label="feat: login"></div>
+        <div class="commit-line" style="flex:1"></div>
+        <div class="commit" data-label="feat: admin panel"></div>
+        <div class="commit-line" style="flex:1"></div>
+        <div class="commit" data-label="feat: shopping car"></div>
+        <div class="commit-line" style="flex:2"></div>
+        <div class="commit" data-label="merge feature/checkout"></div>
+        <div class="commit-line" style="flex:2"></div>
+        <div class="commit" data-label="HEAD → staging"></div>
+      </div>
+    </div>
+
+    <div class="git-track branch-feature" style="margin-left:120px">
+      <div class="branch-label" style="color:var(--purple);width:0;overflow:visible;white-space:nowrap;padding-right:0;text-align:left;padding-left:8px"></div>
+      <div style="width:120px;flex-shrink:0"></div>
+      <div class="commits" style="flex:0 0 auto;width:340px">
+        <div class="commit" data-label="feature/checkout desde develop" style="margin-left:60px"></div>
+        <div class="commit-line" style="width:80px;flex:none"></div>
+        <div class="commit" data-label="wip: checkout form"></div>
+        <div class="commit-line" style="width:80px;flex:none"></div>
+        <div class="commit" data-label="feat: checkout completo"></div>
+        <div style="width:80px"></div>
+      </div>
+      <span style="font-size:11px;color:var(--purple);white-space:nowrap;align-self:center">← feature/checkout</span>
+    </div>
+
+    <div style="margin-top:8px" class="git-track branch-hotfix">
+      <div class="branch-label" style="color:var(--angular)">hotfix</div>
+      <div class="commits">
+        <div style="flex:5.2" class="commit-line" style="background:transparent;opacity:0"></div>
+        <div class="commit" data-label="hotfix/fix-critico desde main"></div>
+        <div class="commit-line" style="flex:1"></div>
+        <div class="commit" data-label="fix: error crítico producción"></div>
+        <div style="flex:1.5"></div>
+      </div>
+    </div>
+
+    <!-- Leyenda -->
+    <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:24px;padding-top:16px;border-top:1px solid var(--border)">
+      <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+        <span style="width:12px;height:12px;border-radius:50%;background:var(--green);display:inline-block"></span> main — Producción
+      </span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+        <span style="width:12px;height:12px;border-radius:50%;background:var(--azure);display:inline-block"></span> develop — Staging
+      </span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+        <span style="width:12px;height:12px;border-radius:50%;background:var(--purple);display:inline-block"></span> feature/* — Funcionalidades
+      </span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+        <span style="width:12px;height:12px;border-radius:50%;background:var(--angular);display:inline-block"></span> hotfix/* — Fixes urgentes
+      </span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+        <span style="width:12px;height:12px;border-radius:50%;background:transparent;border:2px solid var(--yellow);display:inline-block"></span> Tag de release
+      </span>
+    </div>
+  </div>
+
+  <!-- Reglas -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:20px">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px">
+      <div style="font-size:18px;margin-bottom:8px">🔀</div>
+      <div style="font-weight:700;font-size:13px;margin-bottom:4px">PR obligatorio</div>
+      <div style="color:var(--muted);font-size:12px">Para mergear a <code>develop</code> y <code>main</code>. Mínimo 1 aprobación.</div>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px">
+      <div style="font-size:18px;margin-bottom:8px">💬</div>
+      <div style="font-weight:700;font-size:13px;margin-bottom:4px">Conventional Commits</div>
+      <div style="color:var(--muted);font-size:12px"><code>feat:</code> <code>fix:</code> <code>chore:</code> <code>docs:</code> <code>refactor:</code></div>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px">
+      <div style="font-size:18px;margin-bottom:8px">🏷️</div>
+      <div style="font-weight:700;font-size:13px;margin-bottom:4px">Semantic Versioning</div>
+      <div style="color:var(--muted);font-size:12px">Cada release en <code>main</code> lleva tag <code>vMAJOR.MINOR.PATCH</code></div>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px">
+      <div style="font-size:18px;margin-bottom:8px">🚨</div>
+      <div style="font-weight:700;font-size:13px;margin-bottom:4px">Hotfix</div>
+      <div style="color:var(--muted);font-size:12px">Desde <code>main</code> → fix → merge a <code>main</code> + <code>develop</code></div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider" />
+
+<!-- ENTORNOS -->
+<section id="entornos">
+  <div class="section-label">Configuración</div>
+  <h2>Entornos</h2>
+
+  <div class="env-grid">
+    <div class="env-card">
+      <div class="env-name stg">Staging</div>
+      <div style="color:var(--muted);font-size:12px;margin-bottom:16px">Para pruebas e integración</div>
+      <div class="env-row"><span class="label">Rama</span><span class="value"><code>develop</code></span></div>
+      <div class="env-row"><span class="label">Aprobación</span><span class="value" style="color:var(--green)">Automático</span></div>
+      <div class="env-row"><span class="label">Backend URL</span><span class="value" style="color:var(--muted)">SSM /online-store/staging/...</span></div>
+      <div class="env-row"><span class="label">Price Class</span><span class="value"><code>PriceClass_100</code></span></div>
+      <div class="env-row"><span class="label">Suffix</span><span class="value"><code>stg01</code></span></div>
+      <div class="env-row"><span class="label">Logs CloudFront</span><span class="value"><code>30 días</code></span></div>
+      <div class="env-row"><span class="label">Alarma 5xx / 4xx</span><span class="value"><code>5% / 20%</code></span></div>
+      <div class="env-row"><span class="label">No-traffic alarm</span><span class="value" style="color:var(--muted)">deshabilitada</span></div>
+    </div>
+
+    <div class="env-card">
+      <div class="env-name prod">Production</div>
+      <div style="color:var(--muted);font-size:12px;margin-bottom:16px">Usuarios reales</div>
+      <div class="env-row"><span class="label">Rama</span><span class="value"><code>main</code></span></div>
+      <div class="env-row"><span class="label">Aprobación</span><span class="value" style="color:var(--aws)">✋ Manual requerida</span></div>
+      <div class="env-row"><span class="label">Backend URL</span><span class="value" style="color:var(--muted)">SSM /online-store/production/...</span></div>
+      <div class="env-row"><span class="label">Price Class</span><span class="value"><code>PriceClass_100</code></span></div>
+      <div class="env-row"><span class="label">Suffix</span><span class="value"><code>prod01</code></span></div>
+      <div class="env-row"><span class="label">Logs CloudFront</span><span class="value"><code>90 días</code></span></div>
+      <div class="env-row"><span class="label">Alarma 5xx / 4xx</span><span class="value"><code>1% / 10%</code></span></div>
+      <div class="env-row"><span class="label">No-traffic alarm</span><span class="value" style="color:var(--green)">habilitada</span></div>
+    </div>
+  </div>
+
+  <!-- Local dev -->
+  <div style="margin-top:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px">
+    <div style="font-weight:700;font-size:15px;margin-bottom:16px">💻 Desarrollo Local</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--azure);margin-bottom:8px">ng serve</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.8">
+          Proxy en <code>proxy.conf.js</code><br>
+          Lee <code>BACKEND_URL</code> del shell<br>
+          Redirige <code>/api/*</code> al backend<br>
+          Sin Docker, recarga en vivo
+        </div>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--aws);margin-bottom:8px">docker-compose</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.8">
+          Lee <code>BACKEND_URL</code> de <code>.env</code><br>
+          Nginx sirve el bundle compilado<br>
+          Proxy inverso a Azure backend<br>
+          Simula producción localmente
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider" />
+
+<!-- OBSERVABILIDAD -->
+<section id="observabilidad">
+  <div class="section-label">Monitoreo</div>
+  <h2>Observabilidad <small>CloudWatch + SNS — todo lo que ocurre tras el deploy</small></h2>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:24px">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+      <div style="font-size:20px;margin-bottom:8px">📊</div>
+      <div style="font-weight:700;font-size:14px;margin-bottom:6px">CloudWatch Dashboard</div>
+      <div style="color:var(--muted);font-size:12px;line-height:1.7">
+        <code>online-store-&lt;env&gt;</code><br>
+        4 widgets: Requests · Error rate (4xx/5xx) · Bytes downloaded · Ejecuciones de pipeline.
+      </div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+      <div style="font-size:20px;margin-bottom:8px">🚨</div>
+      <div style="font-weight:700;font-size:14px;margin-bottom:6px">CloudWatch Alarms</div>
+      <div style="color:var(--muted);font-size:12px;line-height:1.7">
+        <strong style="color:var(--angular)">5xxErrorRate</strong> &gt; umbral · crítica<br>
+        <strong style="color:var(--yellow)">4xxErrorRate</strong> &gt; umbral · informativa<br>
+        <strong style="color:var(--purple)">Requests = 0</strong> · solo prod, detecta outages
+      </div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+      <div style="font-size:20px;margin-bottom:8px">📨</div>
+      <div style="font-weight:700;font-size:14px;margin-bottom:6px">SNS + CodeStar Notifications</div>
+      <div style="color:var(--muted);font-size:12px;line-height:1.7">
+        Topic <code>online-store-alerts-&lt;env&gt;</code><br>
+        Eventos del pipeline: <code>failed</code>, <code>succeeded</code>, <code>manual-approval-needed</code><br>
+        Suscripción opcional por email (<code>alerts_email</code>).
+      </div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+      <div style="font-size:20px;margin-bottom:8px">📁</div>
+      <div style="font-weight:700;font-size:14px;margin-bottom:6px">CloudFront Access Logs</div>
+      <div style="color:var(--muted);font-size:12px;line-height:1.7">
+        Bucket <code>online-store-cf-logs-&lt;env&gt;-&lt;suffix&gt;</code><br>
+        Cifrado AES256 · retención 30d staging / 90d prod.<br>
+        Listo para análisis con Athena.
+      </div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+      <div style="font-size:20px;margin-bottom:8px">🛡️</div>
+      <div style="font-weight:700;font-size:14px;margin-bottom:6px">Auditoría de dependencias</div>
+      <div style="color:var(--muted);font-size:12px;line-height:1.7">
+        <code>npm audit --audit-level=high</code> corre en cada build.<br>
+        Vulnerabilidades altas/críticas en prod-deps detienen el pipeline.
+      </div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+      <div style="font-size:20px;margin-bottom:8px">📈</div>
+      <div style="font-weight:700;font-size:14px;margin-bottom:6px">Cobertura de tests</div>
+      <div style="color:var(--muted);font-size:12px;line-height:1.7">
+        Threshold definido en <code>karma.conf.js</code>.<br>
+        Report <code>cobertura.xml</code> publicado a CodeBuild Reports en cada ejecución.
+      </div>
+    </div>
+  </div>
+
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px">
+    <div style="font-weight:700;font-size:14px;margin-bottom:14px">🔔 Flujo de una alerta crítica (ej. error 5xx tras deploy)</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--muted)">
+      <span style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 12px"><code>CloudFront</code> detecta 5xx</span>
+      <span style="color:var(--aws)">→</span>
+      <span style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 12px">Alarm <code>*-cf-5xx-prod</code> dispara</span>
+      <span style="color:var(--aws)">→</span>
+      <span style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 12px">SNS publica al topic</span>
+      <span style="color:var(--aws)">→</span>
+      <span style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 12px">📧 Email al equipo DevOps</span>
+    </div>
+  </div>
+</section>
+
+<footer>
+  Online Store · Arquitectura multi-cloud AWS + Azure · Infraestructura gestionada con Terraform
+</footer>
+
+<script>
+  // Scroll progress bar
+  window.addEventListener('scroll', () => {
+    const el = document.documentElement;
+    const pct = (el.scrollTop / (el.scrollHeight - el.clientHeight)) * 100;
+    document.getElementById('scrollBar').style.width = pct + '%';
+  });
+
+  // Stage details data
+  const stages = {
+    source: {
+      icon: '🐙', title: 'Source — GitHub via CodeStar Connection',
+      steps: [
+        { n:1, title: 'Push detectado', desc: 'Un push a <code>main</code> (producción) o <code>develop</code> (staging) activa el pipeline automáticamente.' },
+        { n:2, title: 'CodeStar Connection', desc: 'AWS descarga el código del repositorio <code>paolovf123/online-store</code> usando la conexión OAuth configurada.' },
+        { n:3, title: 'Artifact generado', desc: 'El código fuente se empaqueta como <code>source_output.zip</code> y se almacena en el bucket S3 de artifacts.' },
+      ]
+    },
+    build: {
+      icon: '🔨', title: 'Build — CodeBuild ejecuta buildspec.yml',
+      steps: [
+        { n:1, title: 'npm ci --legacy-peer-deps', desc: 'Instala dependencias exactas del <code>package-lock.json</code>. Usa Node 20 (imagen <code>standard:7.0</code>). Caché S3 sobre <code>~/.npm</code> acelera ejecuciones sucesivas.' },
+        { n:2, title: 'npm audit --audit-level=high', desc: 'Audita dependencias de producción. Falla el build si hay vulnerabilidades altas o críticas.' },
+        { n:3, title: 'node scripts/inject-env.js', desc: 'Script Node que reemplaza el placeholder <code>__BACKEND_URL__</code> en <code>environment.ts</code> con la URL leída de SSM. Reemplaza al <code>sed</code> original (más robusto ante URLs con caracteres especiales).' },
+        { n:4, title: 'npm run test:ci', desc: 'Karma + Jasmine en ChromeHeadless con cobertura. El threshold definido en <code>karma.conf.js</code> (50% statements/lines/functions, 40% branches) hace fallar el build si la cobertura baja del umbral.' },
+        { n:5, title: 'CodeBuild Reports → Cobertura', desc: 'El archivo <code>cobertura.xml</code> se sube como report a la consola de CodeBuild (visible en Reports → Code coverage).' },
+        { n:6, title: 'npm run build (producción)', desc: 'Compila y optimiza el bundle Angular. Output en <code>dist/solution-test-ventas/browser/</code>.' },
+        { n:7, title: 'Artifact build_output', desc: 'Solo los archivos compilados (sin código fuente) pasan a la siguiente etapa.' },
+      ]
+    },
+    approve: {
+      icon: '✋', title: 'Approve — Solo en Producción (require_approval = true)',
+      steps: [
+        { n:1, title: 'Pipeline en pausa', desc: 'CodePipeline espera indefinidamente hasta recibir aprobación manual. En staging esta etapa no existe.' },
+        { n:2, title: 'Notificación automática', desc: 'CodeStar Notifications publica el evento <code>manual-approval-needed</code> al topic SNS <code>online-store-alerts-production</code>. Si <code>alerts_email</code> está configurado, llega un correo.' },
+        { n:3, title: 'Aprobación en AWS Console', desc: 'El responsable revisa el build y aprueba o rechaza en: <em>CodePipeline → online-store-pipeline-production → Approve</em>.' },
+        { n:4, title: 'Continúa o se cancela', desc: 'Si se rechaza, el pipeline termina sin hacer deploy. El código en producción no cambia.' },
+      ]
+    },
+    deploy: {
+      icon: '🚀', title: 'Deploy — CodeBuild ejecuta buildspec-deploy.yml',
+      steps: [
+        { n:1, title: 'S3 sync — assets con hash', desc: '<code>aws s3 sync --exclude index.html --cache-control "public,max-age=31536000,immutable"</code> — Los archivos con hash en el nombre se cachean 1 año.' },
+        { n:2, title: 'S3 cp — index.html sin cache', desc: '<code>--cache-control "no-store,no-cache,must-revalidate"</code> — El entry point del SPA nunca se cachea para que los usuarios siempre obtengan la versión actual.' },
+        { n:3, title: 'CloudFront invalidation', desc: '<code>aws cloudfront create-invalidation --paths "/*"</code> — Limpia la caché del CDN para que el nuevo contenido sea visible globalmente en segundos.' },
+        { n:4, title: 'Notificación de éxito', desc: 'Cuando el pipeline completa, CodeStar Notifications publica el evento <code>succeeded</code> al SNS. CloudFront empieza a registrar requests; las alarmas de 5xx/4xx vigilan la salud del despliegue.' },
+      ]
+    }
+  };
+
+  function showStage(key) {
+    document.querySelectorAll('.stage').forEach(s => s.classList.remove('active'));
+    document.getElementById('s-' + key).classList.add('active');
+
+    const d = stages[key];
+    const steps = d.steps.map(s => `
+      <li>
+        <div class="step-num">${s.n}</div>
+        <div class="step-text">
+          <strong>${s.title}</strong>
+          <span>${s.desc}</span>
+        </div>
+      </li>`).join('');
+
+    document.getElementById('stageDetail').style.display = 'block';
+    document.getElementById('stageDetail').innerHTML = `
+      <h3>${d.icon} ${d.title}</h3>
+      <ul class="step-list">${steps}</ul>
+    `;
+  }
+
+  // Simulate pipeline run
+  async function runPipeline() {
+    const btn = document.getElementById('runBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Ejecutando...';
+
+    const order = ['source', 'build', 'approve', 'deploy'];
+    document.querySelectorAll('.stage').forEach(s => {
+      s.classList.remove('active', 'running', 'done');
+      s.querySelector('.stage-icon').textContent = originalIcons[s.id];
+    });
+    document.getElementById('stageDetail').style.display = 'none';
+
+    for (const key of order) {
+      const el = document.getElementById('s-' + key);
+      el.classList.add('running', 'active');
+      el.querySelector('.stage-icon').textContent = '⏳';
+
+      await delay(key === 'build' ? 2000 : 1200);
+
+      el.classList.remove('running');
+      el.classList.add('done');
+      el.querySelector('.stage-icon').textContent = '✅';
+
+      await delay(300);
+    }
+
+    btn.disabled = false;
+    btn.textContent = '▶ Simular ejecución';
+    showStage('deploy');
+
+    // Reset icons after a bit
+    setTimeout(() => {
+      document.querySelectorAll('.stage').forEach(s => {
+        s.querySelector('.stage-icon').textContent = originalIcons[s.id];
+        s.classList.remove('done');
+      });
+    }, 4000);
+  }
+
+  const originalIcons = {
+    's-source': '🐙', 's-build': '🔨', 's-approve': '✋', 's-deploy': '🚀'
+  };
+
+  function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // Show source detail by default
+  showStage('source');
+</script>
+</body>
+</html>
