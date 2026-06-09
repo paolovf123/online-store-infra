@@ -13,6 +13,6 @@ github_org           = "paolovf123"
 github_frontend_repo = "online-store-frontend"
 # create_github_oidc_provider se deja en false (default): el OIDC provider ya
 # fue creado por el entorno staging y aquí se referencia vía data source.
-#
-# Crear en SSM antes de terraform apply:
-# aws ssm put-parameter --name "/online-store/production/backend-url" --value "https://api-online-store.azurewebsites.net" --type "String"
+# URL del backend (el frontend la hornea en build-time; la lee el deploy desde SSM).
+# Placeholder hasta tener el backend real; cambiar aquí + apply (Terraform gestiona el parámetro).
+backend_url = "https://placeholder.invalid"

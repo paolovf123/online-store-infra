@@ -80,3 +80,9 @@ variable "enable_no_traffic_alarm" {
   type        = bool
   default     = false
 }
+
+variable "backend_url" {
+  description = "URL del backend que el frontend hornea en build-time (la lee el deploy desde SSM /<project>/<env>/backend-url). Placeholder hasta tener el backend real."
+  type        = string
+  default     = "https://placeholder.invalid"
+}

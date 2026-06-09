@@ -254,6 +254,19 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
   })
 }
 
+# ─── SSM: configuración de runtime del frontend ───────────────────────────────
+
+# URL del backend que el frontend hornea en build-time. La lee el workflow de
+# deploy del repo frontend desde SSM. Valor placeholder hasta tener el backend
+# real; se cambia vía el .tfvars del entorno + apply (lo gestiona Terraform).
+resource "aws_ssm_parameter" "backend_url" {
+  name  = "/${var.project_name}/${var.environment}/backend-url"
+  type  = "String"
+  value = var.backend_url
+
+  tags = local.common_tags
+}
+
 # ─── SNS: notificaciones de alarmas ───────────────────────────────────────────
 
 resource "aws_sns_topic" "alerts" {
