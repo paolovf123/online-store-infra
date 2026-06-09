@@ -54,7 +54,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        env: [staging, production]
+        env: [staging, qa, production]
     defaults:
       run:
         working-directory: terraform

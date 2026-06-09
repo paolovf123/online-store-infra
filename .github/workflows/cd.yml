@@ -12,7 +12,7 @@ permissions:
   id-token: write
   contents: read
 
-# CD GitOps: Apply staging (automático) → Apply production (con aprobación).
+# CD GitOps: Apply staging → Apply QA (automáticos) → Apply production (con aprobación).
 # Ambos jobs asumen el rol con permisos de escritura (vars.TF_APPLY_ROLE_ARN),
 # cuyo trust se restringe a estos environments. El environment tf-production
 # tiene un required reviewer, por lo que el run se PAUSA esperando aprobación.
@@ -45,9 +45,38 @@ jobs:
       - name: terraform apply
         run: terraform apply -input=false -auto-approve -var-file="environments/staging.tfvars"
 
+  apply-qa:
+    name: Apply QA
+    needs: apply-staging
+    runs-on: ubuntu-latest
+    environment: tf-qa
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_APPLY_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: terraform init
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=online-store-qa.tfstate" \
+            -backend-config="region=us-east-1" \
+            -backend-config="dynamodb_table=${{ vars.TF_LOCK_TABLE }}" \
+            -backend-config="encrypt=true"
+      - name: terraform apply
+        run: terraform apply -input=false -auto-approve -var-file="environments/qa.tfvars"
+
   apply-production:
     name: Apply production
-    needs: apply-staging
+    needs: apply-qa
     runs-on: ubuntu-latest
     environment: tf-production
     defaults:
