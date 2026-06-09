@@ -1,0 +1,99 @@
+name: Terraform CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/ci.yml'
+
+# Pipeline visual: Format → Validate → Plan (matrix staging/production).
+# El Plan asume el rol de SOLO LECTURA (vars.TF_PLAN_ROLE_ARN) vía OIDC, corre
+# contra el state real con -lock=false y publica el resultado como comentario del PR.
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+      - name: terraform fmt
+        run: terraform fmt -check -recursive
+
+  validate:
+    name: Validate
+    needs: fmt
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+      - name: terraform init (sin backend)
+        run: terraform init -backend=false
+      - name: terraform validate
+        run: terraform validate
+
+  plan:
+    name: Plan
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [staging, production]
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+          terraform_wrapper: false
+      - name: Configure AWS credentials (OIDC, read-only)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_PLAN_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: terraform init
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=online-store-${{ matrix.env }}.tfstate" \
+            -backend-config="region=us-east-1" \
+            -backend-config="dynamodb_table=${{ vars.TF_LOCK_TABLE }}" \
+            -backend-config="encrypt=true"
+      - name: terraform plan
+        id: plan
+        run: |
+          set -o pipefail
+          terraform plan -input=false -lock=false -no-color \
+            -var-file="environments/${{ matrix.env }}.tfvars" \
+            | tee plan-${{ matrix.env }}.txt
+      - name: Comentar el plan en el PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "### Terraform Plan — \`${{ matrix.env }}\` (resultado: \`${{ steps.plan.outcome }}\`)"
+            echo ''
+            echo '```hcl'
+            tail -c 60000 plan-${{ matrix.env }}.txt
+            echo '```'
+          } > comment-${{ matrix.env }}.md
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file comment-${{ matrix.env }}.md
