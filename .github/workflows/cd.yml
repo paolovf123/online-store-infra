@@ -1,0 +1,75 @@
+name: Terraform CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/cd.yml'
+
+# Necesario para que GitHub firme el token OIDC que asume el rol AWS de apply.
+permissions:
+  id-token: write
+  contents: read
+
+# CD GitOps: Apply staging (automático) → Apply production (con aprobación).
+# Ambos jobs asumen el rol con permisos de escritura (vars.TF_APPLY_ROLE_ARN),
+# cuyo trust se restringe a estos environments. El environment tf-production
+# tiene un required reviewer, por lo que el run se PAUSA esperando aprobación.
+jobs:
+  apply-staging:
+    name: Apply staging
+    runs-on: ubuntu-latest
+    environment: tf-staging
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_APPLY_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: terraform init
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=online-store-staging.tfstate" \
+            -backend-config="region=us-east-1" \
+            -backend-config="dynamodb_table=${{ vars.TF_LOCK_TABLE }}" \
+            -backend-config="encrypt=true"
+      - name: terraform apply
+        run: terraform apply -input=false -auto-approve -var-file="environments/staging.tfvars"
+
+  apply-production:
+    name: Apply production
+    needs: apply-staging
+    runs-on: ubuntu-latest
+    environment: tf-production
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_APPLY_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: terraform init
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=online-store-production.tfstate" \
+            -backend-config="region=us-east-1" \
+            -backend-config="dynamodb_table=${{ vars.TF_LOCK_TABLE }}" \
+            -backend-config="encrypt=true"
+      - name: terraform apply
+        run: terraform apply -input=false -auto-approve -var-file="environments/production.tfvars"
