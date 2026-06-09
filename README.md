@@ -1,138 +1,183 @@
-# Online Store — Infrastructure
+# ☁️ Online Store — Infraestructura (Terraform)
 
-Infraestructura AWS (Terraform) para el frontend del proyecto Online Store. El código frontend vive en el repo [online-store-frontend](https://github.com/paolovf123/online-store-frontend); este repo solo crea los recursos AWS y el rol OIDC que sus GitHub Actions van a usar para deployar.
+Infraestructura **AWS como código** del proyecto Online Store, gestionada con **Terraform** y un pipeline **GitOps** (`plan` en cada PR, `apply` al hacer merge). Crea el hosting del frontend (S3 + CloudFront), los roles **OIDC** que usan los GitHub Actions, la observabilidad (CloudWatch + SNS) y la configuración del backend (SSM).
+
+El código del frontend vive en **[online-store-frontend](https://github.com/paolovf123/online-store-frontend)**; este repo solo provisiona la nube.
+
+> **Cuenta AWS:** `492094933097` · **Región:** `us-east-1`
+
+| Entorno | State key | CloudFront |
+|---|---|---|
+| 🟡 Staging | `online-store-staging.tfstate` | https://d1oy0fsyam6om9.cloudfront.net |
+| 🟢 Production | `online-store-production.tfstate` | https://d2ielm05o2gs5q.cloudfront.net |
 
 ---
 
-## Arquitectura AWS
+## 📐 Arquitectura
 
 ```
-GitHub Actions (repo frontend)
-    │ assume role (OIDC)
-    ▼
-[IAM Role online-store-gh-actions-<env>]
-    │ s3:PutObject, cloudfront:CreateInvalidation, ssm:GetParameter
-    ▼
-[S3 frontend bucket] ──> [CloudFront] ──> Usuarios
-
-[CloudWatch alarms (5xx / 4xx / no-traffic)] ──> [SNS topic] ──> email
+   GitHub Actions (repos frontend e infra)
+        │  AssumeRoleWithWebIdentity (OIDC, token efímero)
+        ▼
+   ┌─────────────────────────────────────────────┐
+   │  IAM OIDC Provider (global por cuenta)        │
+   │  token.actions.githubusercontent.com          │
+   └───────────────┬───────────────────────────────┘
+                   │ confía en repos/entornos específicos
+        ┌──────────┴───────────┬─────────────────────┐
+        ▼                      ▼                     ▼
+  deploy role            tf-plan (RO)          tf-apply (RW)
+  (frontend)             (infra · PR)          (infra · merge)
+        │
+        │ s3 sync · cloudfront invalidation · ssm:GetParameter
+        ▼
+   ┌─────────────┐      ┌──────────────┐
+   │ S3 frontend │ ───▶ │  CloudFront   │ ───▶  Usuarios
+   │ (privado)   │ OAC  └──────────────┘
+   └─────────────┘
+   ┌─────────────┐   ┌──────────────────────┐   ┌──────────┐
+   │ S3 cf-logs  │   │ CloudWatch dashboard  │   │ SSM       │
+   │ (access log)│   │ + alarmas 4xx/5xx/0   │──▶│ backend-  │
+   └─────────────┘   └──────────┬───────────┘   │ url       │
+                                ▼                └──────────┘
+                            SNS topic ──▶ email (opcional)
 ```
+
+### Recursos por entorno
 
 | Recurso | Para qué |
 |---|---|
-| S3 `*-frontend-<env>` | Bundle Angular (privado, OAC) |
-| S3 `*-cf-logs-<env>` | Access logs de CloudFront |
-| CloudFront | CDN + HTTPS + SPA routing |
-| IAM OIDC provider | Confianza con `token.actions.githubusercontent.com` |
-| IAM Role `*-gh-actions-<env>` | Permisos mínimos para que el workflow deploye |
-| SNS topic + alarmas | Salud de CloudFront |
-| CloudWatch dashboard | Requests, error rate, bytes |
-
-> **Lo que NO está aquí:** CodePipeline, CodeBuild, CodeStar Connections. El CI/CD se movió a GitHub Actions; el rol OIDC reemplaza esos servicios.
+| `S3 *-frontend-<env>` | Bundle Angular (privado, acceso solo por CloudFront vía OAC) |
+| `S3 *-cf-logs-<env>` | Access logs de CloudFront (lifecycle de retención) |
+| `CloudFront` | CDN, HTTPS, routing de la SPA |
+| `IAM OIDC provider` | Confianza federada con GitHub (global, uno por cuenta) |
+| `IAM role *-gh-actions-<env>` | Permisos mínimos para que el **frontend** deploye |
+| `SSM /online-store/<env>/backend-url` | URL del backend que el frontend hornea en build |
+| `CloudWatch dashboard + alarmas` | Salud de CloudFront (4xx, 5xx, sin tráfico) |
+| `SNS topic` | Notificación de alarmas (email opcional) |
 
 ---
 
-## Pre-requisitos (una sola vez por cuenta AWS)
+## 🔐 Modelo de seguridad — OIDC, cero llaves estáticas
+
+No existe ningún `AWS_ACCESS_KEY` guardado: GitHub firma un token OIDC efímero y AWS lo cambia por credenciales temporales. Hay **tres roles**, cada uno con el mínimo privilegio para su tarea:
+
+| Rol | Lo asume | Permisos | Confianza (claim `sub`) |
+|---|---|---|---|
+| `online-store-gh-actions-<env>` | CD del **frontend** | s3 sync al bucket, invalidar CloudFront, leer SSM | `repo:.../online-store-frontend:environment:<env>` |
+| `online-store-tf-plan` | CI de **infra** (en PR) | **ReadOnlyAccess** | `repo:.../online-store-infra:pull_request` |
+| `online-store-tf-apply` | CD de **infra** (en merge) | PowerUserAccess + IAMFullAccess | `repo:.../online-store-infra:environment:tf-<env>` |
+
+El `apply` de production siempre queda detrás de un **required reviewer** (GitHub Environment `tf-production`).
+
+---
+
+## 🔄 CI/CD GitOps (este repo)
+
+### 🔍 CI — [`ci.yml`](.github/workflows/ci.yml) · en cada PR a `main` (que toque `terraform/**`)
+
+```
+   Format  ───▶  Validate  ───▶  Plan (staging) + Plan (production)
+```
+
+`terraform fmt` → `validate` → `plan` contra el state real (rol **solo lectura**) y **publica el plan como comentario del PR** para revisarlo antes de mergear.
+
+### 🚢 CD — [`cd.yml`](.github/workflows/cd.yml) · en push a `main`
+
+```
+   Apply staging (automático)  ───▶  Apply production (con aprobación)
+```
+
+`apply` de staging automático; el de production se **pausa** esperando aprobación (environment `tf-production`). Ambos asumen el rol de escritura por OIDC.
+
+---
+
+## 🗂️ Estructura
+
+```
+terraform/
+├── main.tf              # S3, CloudFront, OAC, IAM/OIDC, CloudWatch, SNS, SSM
+├── variables.tf         # variables de entrada (incluye backend_url)
+├── outputs.tf           # ARNs, URLs, IDs que consume el frontend
+├── providers.tf         # provider AWS + backend "s3"
+└── environments/
+    ├── staging.tfvars
+    └── production.tfvars
+```
+
+---
+
+## 🧱 Backend de estado remoto (bootstrap — una vez por cuenta)
+
+El state vive en S3 con lock en DynamoDB (ya creados en esta cuenta):
 
 ```bash
-# Bucket para el state remoto de Terraform
-aws s3 mb s3://online-store-tfstate-<ACCOUNT_ID> --region us-east-1
-aws s3api put-bucket-versioning \
-  --bucket online-store-tfstate-<ACCOUNT_ID> \
+aws s3 mb s3://online-store-tfstate-492094933097 --region us-east-1
+aws s3api put-bucket-versioning --bucket online-store-tfstate-492094933097 \
   --versioning-configuration Status=Enabled
-
-# Tabla DynamoDB para el lock
-aws dynamodb create-table \
-  --table-name online-store-tfstate-lock \
+aws dynamodb create-table --table-name online-store-tflock \
   --attribute-definitions AttributeName=LockID,AttributeType=S \
   --key-schema AttributeName=LockID,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST \
-  --region us-east-1
-
-# SSM parameter por entorno con la URL del backend Azure
-aws ssm put-parameter \
-  --name "/online-store/staging/backend-url" \
-  --value "https://api-online-store-staging.azurewebsites.net" \
-  --type "String"
-
-aws ssm put-parameter \
-  --name "/online-store/production/backend-url" \
-  --value "https://api-online-store.azurewebsites.net" \
-  --type "String"
+  --billing-mode PAY_PER_REQUEST --region us-east-1
 ```
 
 ---
 
-## Aplicar
-
-Usa la skill integrada de Claude Code:
-
-```
-/deploy-aws staging
-/deploy-aws production
-```
-
-O manualmente:
+## ▶️ Aplicar manualmente (alternativa al CD)
 
 ```bash
 cd terraform
 
 terraform init \
-  -backend-config="bucket=online-store-tfstate-<ACCOUNT_ID>" \
+  -backend-config="bucket=online-store-tfstate-492094933097" \
   -backend-config="key=online-store-<env>.tfstate" \
   -backend-config="region=us-east-1" \
-  -backend-config="dynamodb_table=online-store-tfstate-lock" \
+  -backend-config="dynamodb_table=online-store-tflock" \
   -backend-config="encrypt=true"
 
-terraform plan -var-file="environments/<env>.tfvars" -out=tfplan
+terraform plan  -var-file="environments/<env>.tfvars" -out=tfplan
 terraform apply tfplan
 ```
 
-> **Primer entorno aplicado:** setear `create_github_oidc_provider = true` en el tfvar. En los siguientes entornos dejarlo en false (el OIDC provider es global por cuenta).
+> **Primer entorno en la cuenta:** poner `create_github_oidc_provider = true` en su `.tfvars` (el OIDC provider es **global**, uno por cuenta). En los demás entornos queda en `false` y se referencia vía *data source*.
 
 ---
 
-## Outputs relevantes
+## 📤 Outputs
 
 | Output | Para qué |
 |---|---|
 | `cloudfront_url` | URL pública del frontend |
-| `cloudfront_distribution_id` | Setear como variable `CLOUDFRONT_DISTRIBUTION_ID` en GitHub Environment |
-| `s3_frontend_bucket` | Setear como variable `S3_BUCKET` en GitHub Environment |
-| `github_actions_role_arn` | Setear como secret `AWS_DEPLOY_ROLE_ARN` en GitHub Environment |
-| `cloudwatch_dashboard_url` | Link al dashboard |
+| `cloudfront_distribution_id` | → variable `CLOUDFRONT_DISTRIBUTION_ID` en el repo frontend |
+| `s3_frontend_bucket` | → variable `S3_BUCKET` en el repo frontend |
+| `github_actions_role_arn` | → secret `AWS_DEPLOY_ROLE_ARN` en el repo frontend |
+| `cloudwatch_dashboard_url` | Link al dashboard de métricas |
 | `alerts_topic_arn` | Para suscripciones adicionales al SNS |
 
 ---
 
-## Después de aplicar (en el repo frontend)
+## ⚙️ URL del backend (SSM, gestionada por Terraform)
 
-Configurar en [github.com/paolovf123/online-store-frontend/settings/environments](https://github.com/paolovf123/online-store-frontend/settings/environments):
+El parámetro `/online-store/<env>/backend-url` se crea con el recurso `aws_ssm_parameter.backend_url` a partir de la variable `backend_url` (definida en cada `.tfvars`). Hoy es un *placeholder* (`https://placeholder.invalid`) hasta que exista el backend real.
 
-1. Environment `staging`:
-   - Secret `AWS_DEPLOY_ROLE_ARN` = output `github_actions_role_arn`
-   - Variable `S3_BUCKET` = output `s3_frontend_bucket`
-   - Variable `CLOUDFRONT_DISTRIBUTION_ID` = output `cloudfront_distribution_id`
-2. Environment `production`: lo mismo, con los outputs del apply de production. Agregar **Required reviewers** para que el deploy a main pida aprobación manual.
-
-Luego, en Azure App Service → CORS, agregar la URL CloudFront como allowed origin.
+**Para cambiar el backend:** editar `backend_url` en `environments/<env>.tfvars` → PR → merge. El CD aplica el cambio. *(No se setea a mano con `aws ssm put-parameter`.)*
 
 ---
 
-## Costo estimado
+## 💰 Costo estimado
 
-~$1-2/mes en idle (CloudWatch alarms ~$0.30, S3 + CloudFront en free tier para tráfico bajo). Sin costo de CodePipeline porque ya no existe.
+~**$1–2/mes** en reposo: las alarmas de CloudWatch (~$0.30) y S3/CloudFront dentro del *free tier* para tráfico bajo. No hay CodePipeline/CodeBuild — el CI/CD es GitHub Actions + OIDC (gratis para repos públicos).
 
 ---
 
-## `terraform destroy`
+## 🧹 `terraform destroy`
 
 ```bash
 terraform destroy -var-file="environments/<env>.tfvars"
 ```
 
-- `cloudfront_logs` y `frontend` buckets — el primero tiene `force_destroy = true`. El segundo NO; hay que vaciarlo manualmente antes:
+- El bucket `*-frontend-<env>` **no** tiene `force_destroy`; vaciarlo primero:
   ```bash
   aws s3 rm s3://$(terraform output -raw s3_frontend_bucket) --recursive
   ```
-- El OIDC provider (si lo creó este entorno con `create_github_oidc_provider = true`) se borra. Si hay otros entornos que lo referencian via data source, fallarán. Solución: mover el flag al siguiente entorno y aplicar antes de destruir.
+- Si este entorno creó el OIDC provider (`create_github_oidc_provider = true`), al destruirlo se borra y los otros entornos que lo referencian fallarán. Mover el flag a otro entorno y aplicarlo antes de destruir.
