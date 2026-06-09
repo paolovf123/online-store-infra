@@ -100,6 +100,11 @@ data "aws_cloudfront_cache_policy" "caching_optimized" {
 }
 
 resource "aws_cloudfront_distribution" "frontend" {
+  # CloudFront (logging legacy) valida que el bucket de logs tenga ACLs habilitadas.
+  # Forzamos el orden para evitar la carrera con ownership_controls (que recién propaga
+  # el BucketOwnerPreferred): sin esto, CreateDistribution falla de forma intermitente.
+  depends_on = [aws_s3_bucket_ownership_controls.cloudfront_logs]
+
   enabled             = true
   is_ipv6_enabled     = true
   default_root_object = "index.html"
