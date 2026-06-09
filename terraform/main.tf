@@ -198,7 +198,9 @@ locals {
 }
 
 # Rol asumido por el workflow de GitHub Actions del repo frontend para deployar
-# este entorno. La condición sub limita a un repo y una rama específicos.
+# este entorno. La condición sub limita a un repo y un GitHub Environment
+# específicos: cuando el job declara `environment:`, el claim `sub` del token OIDC
+# toma la forma repo:<org>/<repo>:environment:<env> (NO la forma :ref:refs/heads/).
 resource "aws_iam_role" "github_actions_deploy" {
   name = "${var.project_name}-gh-actions-${var.environment}"
 
@@ -213,7 +215,7 @@ resource "aws_iam_role" "github_actions_deploy" {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
         StringLike = {
-          "token.actions.githubusercontent.com:sub" = "repo:${var.github_org}/${var.github_frontend_repo}:ref:refs/heads/${var.github_branch}"
+          "token.actions.githubusercontent.com:sub" = "repo:${var.github_org}/${var.github_frontend_repo}:environment:${var.environment}"
         }
       }
     }]
