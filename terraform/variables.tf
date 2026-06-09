@@ -35,7 +35,7 @@ variable "github_frontend_repo" {
 }
 
 variable "github_branch" {
-  description = "Rama del repo frontend autorizada a asumir el rol de deploy de este entorno (develop para staging, main para production)."
+  description = "Rama del repo frontend asociada a este entorno (develop para staging, main para production). Informativo: el gate de rama lo aplican el trigger del workflow y la branch policy del GitHub Environment; el trust del rol IAM se restringe por environment, no por rama."
   type        = string
 }
 
