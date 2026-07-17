@@ -15,4 +15,4 @@ github_frontend_repo = "online-store-frontend"
 create_github_oidc_provider = true
 # URL del backend (el frontend la hornea en build-time; la lee el deploy desde SSM).
 # Placeholder hasta tener el backend real; cambiar aquí + apply (Terraform gestiona el parámetro).
-backend_url = "https://d1vjkzqrkiwkzr.cloudfront.net"
+backend_url = "https://d34uyspyj2qa5i.cloudfront.net"
